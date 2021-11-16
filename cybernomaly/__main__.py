@@ -16,6 +16,12 @@ _DEFAULT_FMT = "%.time% %-6s,IP.proto% %-15s,IP.src% -> %-15s,IP.dst%"
     help="Number of packets to read.",
 )
 @click.option(
+    "--offset",
+    "-o",
+    type=int,
+    help="Number of packets at the beginning to skip.",
+)
+@click.option(
     "--speed",
     "-s",
     default=1,
@@ -31,16 +37,15 @@ _DEFAULT_FMT = "%.time% %-6s,IP.proto% %-15s,IP.src% -> %-15s,IP.dst%"
     help="Format string for summarising packets. "
     "See (kamene.packet.sprintf) for more details.",
 )
-def main(filename, num, speed, fmt):
+def main(filename, num, offset, speed, fmt):
     """Analyse a PCAP file for anomalous packets."""
     # midas = MIDAS_R()
     dpi = DeepPacketInspector()
     player = PcapPlayer(filename)
-    for pkt in player.replay(n_packets=num, speed=speed):
-        meta = dpi.read(pkt)
+    for pkt in player.replay(n_packets=num, offset=offset, speed=speed):
+        report = dpi.process(pkt)
         # midas.update(src, dst, player.t)
-        print(f"{player.seen}: {pkt.sprintf(fmt)}")
-        print(f"{meta}")
+        print(f"{player.seen}: {report.summary()}")
 
 
 if __name__ == "__main__":

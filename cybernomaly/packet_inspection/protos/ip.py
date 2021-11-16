@@ -1,16 +1,10 @@
-from kamene.layers.l2 import IP_PROTOS
-
-from cybernomaly.packet_inspection.protos.base import Proto
+from cybernomaly.packet_inspection.protos.base import Protocol
 
 
-class IP(Proto):
-    PROTOS_IP = {v: k.upper() for k, v in vars(IP_PROTOS).items()}
-
-    def process(self, payload):
-        print("IP processing")
-        next_state = IP.PROTOS_IP.get(payload.proto)
+class IP(Protocol):
+    def get_meta(self, payload):
         meta = {
             "src": payload.src,
             "dst": payload.dst,
         }
-        return next_state, meta
+        return meta

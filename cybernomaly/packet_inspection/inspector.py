@@ -4,7 +4,7 @@ import pkgutil
 from time import sleep
 
 from cybernomaly.packet_inspection import protos
-from cybernomaly.packet_inspection.protos.base import Proto
+from cybernomaly.packet_inspection.protos.base import Protocol
 
 
 def _find_subclasses(package, base_class):
@@ -28,50 +28,64 @@ def _find_subclasses(package, base_class):
     return results
 
 
-class DeepPacketInspector:
-    _STATES = _find_subclasses(protos, Proto)
+class PacketReport:
+    def __init__(self, meta):
+        self._meta = meta
 
-    def __init__(self, start="IP"):
+    def summary(self, delim=" | "):
+        out = []
+        for layer, meta in self._meta.items():
+            layer = layer.replace(" ", "")
+            detail = []
+            for key, val in sorted(meta.items(), key=lambda x: x[0]):
+                detail.append(f"{key}={val}")
+            if detail:
+                out.append(f"{layer}[{','.join(detail)}]")
+            else:
+                out.append(layer)
+        return delim.join(out)
+
+
+class DeepPacketInspector:
+    _STATES = _find_subclasses(protos, Protocol)
+
+    def __init__(self, start=None, default="skip"):
         self.states = {}
         for name, proto in self._STATES.items():
-            self.states[name] = self.prime(proto(self))()
-        self._start = self.states[start]
+            self.states[name] = proto(self)
+        self._start = start
+        if default == "stop":
+            self._default = None
+        elif default == "skip":
+            self._default = self.states["_SKIP_STATE"]
+        else:
+            raise ValueError(f"Unsupported default action '{default}'")
 
-        self._current = None
         self._metadata = None
         self._reset()
-        print(self._current)
 
     def _reset(self):
         self._current = self._start
         self._stopped = False
         self._metadata = {}
 
-    def prime(self, proto):
-        def wrapper(*args, **kwargs):
-            v = proto.run(self, *args, **kwargs)
-            v.send(None)
-            return v
-
-        return wrapper
-
     def set_state(self, state):
-        self._current = self.states[state]
+        self._current = state
 
-    def read(self, packet):
-        self._payload = packet.getlayer(self._current)
-        return self.process()
+    def process(self, packet):
+        payload = packet
+        if self._current is None and payload is not None:
+            self._current = payload.getlayer(0).name
 
-    def process(self):
-        try:
-            print("stage: ", self._current.__qualname__)
-            self._current.send(self._payload)
-        except StopIteration:
-            self._stopped = True
+        while self._current is not None and payload is not None:
+            payload = payload.getlayer(self._current)
+            next_state = self.states.get(self._current, self._default)
+            if next_state is not None:
+                next_state.process(payload)
 
         meta = self._metadata
         self._reset()
-        return meta
+        return PacketReport(meta)
 
     def add_meta(self, key, meta):
         self._metadata[key] = meta
