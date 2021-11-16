@@ -1,0 +1,8 @@
+__title__ = "cybernomaly"
+__description__ = "Anomaly detection for network monitoring."
+__url__ = "https://github.com/big-o/cybernomaly"
+__version__ = "0.0.1"
+__author__ = "Big O"
+__author_email__ = "big-o@users.noreply.github.com"
+__license__ = "GPL v3"
+__copyright__ = "Copyright 2018 Big O"
