@@ -2,7 +2,7 @@ import click
 
 from cybernomaly.packet_inspection import DeepPacketInspector, PcapPlayer
 
-# from cybernomaly.anomaly_detection import MIDAS_R
+from cybernomaly.anomaly_detection import MIDAS_R
 
 _DEFAULT_FMT = "%.time% %-6s,IP.proto% %-15s,IP.src% -> %-15s,IP.dst%"
 
@@ -10,16 +10,10 @@ _DEFAULT_FMT = "%.time% %-6s,IP.proto% %-15s,IP.src% -> %-15s,IP.dst%"
 @click.command()
 @click.argument("filename", type=click.Path(exists=True))
 @click.option(
-    "--num",
-    "-n",
-    type=int,
-    help="Number of packets to read.",
+    "--num", "-n", type=int, help="Number of packets to read.",
 )
 @click.option(
-    "--offset",
-    "-o",
-    type=int,
-    help="Number of packets at the beginning to skip.",
+    "--offset", "-o", type=int, help="Number of packets at the beginning to skip.",
 )
 @click.option(
     "--speed",
@@ -39,9 +33,9 @@ _DEFAULT_FMT = "%.time% %-6s,IP.proto% %-15s,IP.src% -> %-15s,IP.dst%"
 )
 def main(filename, num, offset, speed, fmt):
     """Analyse a PCAP file for anomalous packets."""
-    # midas = MIDAS_R()
-    dpi = DeepPacketInspector()
+    dpi = DeepPacketInspector(postprocess=[MIDAS_R()])
     player = PcapPlayer(filename)
+
     for pkt in player.replay(n_packets=num, offset=offset, speed=speed):
         report = dpi.process(pkt)
         # midas.update(src, dst, player.t)

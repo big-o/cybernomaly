@@ -132,3 +132,4 @@ dmypy.json
 *.csv
 *.zip
 *.md5
+*.swp

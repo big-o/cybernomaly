@@ -18,6 +18,10 @@ VERSION = None
 REQUIRES_PYTHON = ">=3.7"
 # What packages are required for this module to be executed?
 REQUIRED = [
+    "click",
+    "kamene",
+    "pyprobables",
+    "scipy",
 ]
 
 # The rest you shouldn't have to touch too much :)
