@@ -9,6 +9,7 @@ class PcapPlayer:
     def __init__(self, filename):
         self.filename = filename
         self.seen = 0
+        self.t = 0
 
     def replay(self, n_packets=None, offset=None, speed=1, callback=None, **kwargs):
         t = None
@@ -27,7 +28,7 @@ class PcapPlayer:
                     sleep((pkt.time - t) / speed)
 
                 self.seen += 1
-                t = pkt.time
+                t = self.t = pkt.time
 
                 if callback is not None:
                     callback(pkt, **kwargs)

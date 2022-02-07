@@ -45,6 +45,10 @@ class PacketReport:
                 out.append(layer)
         return delim.join(out)
 
+    @property
+    def meta(self):
+        return self._meta
+
 
 class DeepPacketInspector:
     _STATES = _find_subclasses(protos, Protocol)
