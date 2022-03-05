@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 __all__ = ["Monitor"]
 
+
 class Monitor(ABC):
     @abstractmethod
     def initialize(self, *args, **kwargs):

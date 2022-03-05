@@ -1,6 +1,9 @@
 import csv
 import click
 from datetime import datetime
+import matplotlib.pyplot as plt
+import pandas as pd
+from rich.progress import Progress
 
 from cybernomaly.packet_inspection import DeepPacketInspector, PcapPlayer
 from cybernomaly.anomaly_detection import MIDAS_R
@@ -8,13 +11,32 @@ from cybernomaly.anomaly_detection import MIDAS_R
 _DEFAULT_FMT = "%.time% %-6s,IP.proto% %-15s,IP.src% -> %-15s,IP.dst%"
 
 
+def _make_gen(reader):
+    b = reader(1024 * 1024)
+    while b:
+        yield b
+        b = reader(1024 * 1024)
+
+
+def rowcount(filename):
+    f = open(filename, "rb")
+    f_gen = _make_gen(f.raw.read)
+    return sum(buf.count(b"\n") for buf in f_gen)
+
+
 @click.command()
 @click.argument("filename", type=click.Path(exists=True))
 @click.option(
-    "--num", "-n", type=int, help="Number of packets to read.",
+    "--num",
+    "-n",
+    type=int,
+    help="Number of packets to read.",
 )
 @click.option(
-    "--offset", "-o", type=int, help="Number of packets at the beginning to skip.",
+    "--offset",
+    "-o",
+    type=int,
+    help="Number of packets at the beginning to skip.",
 )
 @click.option(
     "--speed",
@@ -32,28 +54,70 @@ _DEFAULT_FMT = "%.time% %-6s,IP.proto% %-15s,IP.src% -> %-15s,IP.dst%"
     help="Format string for summarising packets. "
     "See (kamene.packet.sprintf) for more details.",
 )
-def main(filename, num, offset, speed, fmt):
+@click.option(
+    "--out",
+    "-O",
+    type=str,
+    default=None,
+    help="File to save a plot and table of scores to.",
+)
+def main(filename, num, offset, speed, fmt, out):
     """Analyse a PCAP file for anomalous packets."""
     dpi = DeepPacketInspector()
 
     if filename.endswith(".csv"):
+        total = rowcount(filename) - 1
         with open(filename) as fh:
             reader = csv.reader(fh)
-            midasr = MIDAS_R(ticksize=60)
-            maxscore = 0
-            for seen, row in enumerate(reader, 1):
-                if seen > num:
-                    break
-                src, dst, ts, desc = row
-                label = 0 if desc == "-" else 1
-                ts = datetime.strptime(ts, "%m/%d/%Y-%H:%M").timestamp()
-                score = midasr.update_predict_score(src, dst, t=ts)
-                # print(f"{seen}: [[{score}]] {report.summary()}")
-                # if label != 0 or seen % 50000 == 0:
-                if score > midasr.thresh or label != 0:
-                    print(
-                        f"{seen}: {ts}: {desc} {score:.3g} (t = {midasr.thresh:.3g}) {src} -> {dst}"
-                    )
+            next(reader)
+            midasr = MIDAS_R(
+                error_rate=2 / 768,
+                false_pos_prob=0.6,
+                decay=0.6,
+                ticksize=1,
+                mode="log",
+            )
+            results = []
+            xlim = [None, None]
+            with Progress(expand=True) as progress:
+                task = progress.add_task("Processing...", total=total)
+                for seen, row in enumerate(reader, 1):
+                    try:
+                        if num is not None and seen > num:
+                            break
+
+                        progress.update(
+                            task, description=f"Processing #{seen}/{total}..."
+                        )
+                        ts, src, dst = row
+                        ts = int(ts)
+                        if xlim[0] is None or ts < xlim[0]:
+                            xlim[0] = ts
+                        if xlim[1] is None or ts > xlim[1]:
+                            xlim[1] = ts
+                        score = midasr.update_predict_score(src, dst, t=ts)
+                        results.append([ts, src, dst, score])
+                        progress.update(task, advance=1)
+                    except KeyboardInterrupt:
+                        break
+
+        results = pd.DataFrame(results, columns=["t", "src", "dst", "score"])
+        print(results.sort_values("score", ascending=False).head(20))
+        print(results.groupby("t")["score"].max().sort_values(ascending=False).head(20))
+        results.to_csv(f"{out}.csv")
+        if out:
+            data = results.groupby("t")["score"].max().reset_index()
+            fig, ax = plt.subplots(figsize=(8, 6))
+            data.plot(x="t", y="score", ax=ax)
+            ax.hlines(
+                midasr.thresh_,
+                *xlim,
+                linestyle="dashed",
+                label=r"$\alpha = " f"{midasr.alpha}$",
+            )
+            ax.set_xlim(xlim)
+            ax.legend()
+            fig.savefig(f"{out}.png")
 
     else:
         player = PcapPlayer(filename)

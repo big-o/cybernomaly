@@ -19,6 +19,7 @@ class Protocol:
     def name(self):
         return self.__class__.__name__
 
+
 class _SKIP_STATE(Protocol):
     def get_meta(self, payload):
         proto = payload.getlayer(0).name
