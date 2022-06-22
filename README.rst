@@ -4,8 +4,7 @@ cybernomaly
 Detect anomalies in packet captures (streaming or offline) using the MIDAS and MSTREAM
 algorithms.
 
-.. note:
-    WORK IN PROGRESS
+*WORK IN PROGRESS*
 
 References
 ----------
