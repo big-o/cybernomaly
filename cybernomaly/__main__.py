@@ -95,7 +95,7 @@ def main(filename, num, offset, speed, fmt, out):
                             xlim[0] = ts
                         if xlim[1] is None or ts > xlim[1]:
                             xlim[1] = ts
-                        score = midasr.update_predict_score(src, dst, t=ts)
+                        score = midasr.update_detect_score(src, dst, t=ts)
                         results.append([ts, src, dst, score])
                         progress.update(task, advance=1)
                     except KeyboardInterrupt:
@@ -137,7 +137,7 @@ def main(filename, num, offset, speed, fmt, out):
             )
             src, dst = f"{srcip}:{srcport}", f"{dstip}:{dstport}"
 
-            score = midasr.update_predict_score(src, dst, t=player.t)
+            score = midasr.update_detect_score(src, dst, t=player.t)
             # print(f"{player.seen}: [[{score}]] {report.summary()}")
             print(f"{player.seen}: {player.t}: [[{score}]] {src} -> {dst}")
 

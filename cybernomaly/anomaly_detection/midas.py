@@ -1,14 +1,27 @@
 from functools import lru_cache
+from time import time
 
 import numpy as np
 from probables import CountMinSketch
-from time import time
-from cybernomaly.exceptions import NotInitializedError
 from scipy.stats import chi2
 
+from cybernomaly.anomaly_detection.base import Monitor
 
-class MIDAS_R:
-    "https://arxiv.org/abs/1911.04464"
+
+class MIDAS_R(Monitor):
+    """
+    Anomaly detector for a simple stream of graph edgesi using the MIDAS-R [1]_
+    algorithm. Works on simple edge counts and timings, without any more advanced
+    features.
+
+    To also account for node/edge properties, MStream is the multi-dimensional
+    equivalent.
+
+    References
+    ----------
+    .. [1] MIDAS: Microcluster-Based Detector of Anomalies in Edge Streams
+           https://arxiv.org/abs/1911.04464
+    """
 
     def __init__(
         self,
@@ -65,17 +78,25 @@ class MIDAS_R:
         self._start = None
         self._last_update = None
 
-    def update_predict_score(self, src, dst, count=1, t=None):
-        now = (int(t) if t is not None else int(time())) / self.ticksize
-        if self._start is None:
-            self._start = now - 1
+    def partial_fit(self, src, dst):
+        return self
 
-        now -= self._start
+    def update(self, src, dst, count=1, t=None):
+        edge, src, dst = self._format_keys(src, dst)
+        t = self._snap_time(t if t is not None else time(), self.ticksize)
+        return self._update(edge, src, dst, count, t)
+
+    def _update(self, edge, src, dst, count, t):
+        if self._start is None:
+            self._start = t - 1
+
+        t -= self._start
+        self.now_ = t
 
         if self._last_update is None:
-            self._last_update = now
+            self._last_update = t
 
-        if now > self._last_update:
+        if t > self._last_update:
             if self.decay:
                 for cms in (self._edge_cur, self._src_cur, self._dst_cur):
                     for i in range(len(cms._bins)):
@@ -84,22 +105,30 @@ class MIDAS_R:
                 self._edge_cur.clear()
                 self._src_cur.clear()
                 self._dst_cur.clear()
-            self._last_update = now
+            self._last_update = t
 
-        edge = repr((src, dst))
-        src, dst = repr(src), repr(dst)
         self._update_edge(edge, count)
         self._update_src(src, count)
         self._update_dst(dst, count)
 
+    def detect_score(self, src, dst):
+        edge, src, dst = self._format_keys(src, dst)
+        t = self._snap_time(t if t is not None else time(), self.ticksize)
+        return self._detect_score(edge, src, dst)
+
+    def detect(self, src, dst):
+        return self.detect_score(src, dst) > self.thresh_
+
+    def _detect_score(self, edge, src, dst):
+        edge, src, dst = self._format_keys(src, dst)
         edge_score = self._score(
-            self._edge_cur.check(edge), self._edge_tot.check(edge), t=now
+            self._edge_cur.check(edge), self._edge_tot.check(edge)
         )
         src_score = self._score(
-            self._src_cur.check(src), self._src_tot.check(src), t=now
+            self._src_cur.check(src), self._src_tot.check(src)
         )
         dst_score = self._score(
-            self._dst_cur.check(dst), self._dst_tot.check(dst), t=now
+            self._dst_cur.check(dst), self._dst_tot.check(dst)
         )
 
         score = self.agg(edge_score, src_score, dst_score)
@@ -110,9 +139,20 @@ class MIDAS_R:
 
         return score
 
-    def update_predict(self, src, dst, count=1, t=None):
-        score = self.update_predict_score(src, dst, count, t)
-        return score > self.thresh_
+    def update_detect_score(self, src, dst, count=1, t=None):
+        edge, src, dst = self._format_keys(src, dst)
+        t = self._snap_time(t if t is not None else time(), self.ticksize)
+        self._update(edge, src, dst, count, t)
+        return self._detect_score(edge, src, dst)
+
+    def update_detect(self, src, dst, count=1, t=None):
+        return self.update_detect_score(src, dst, count, t) > self.thresh_
+
+    def _format_keys(self, src, dst):
+        edge = repr((src, dst))
+        src = repr(src)
+        dst = repr(dst)
+        return edge, src, dst
 
     def _create_cms(self):
         cms = CountMinSketch(
@@ -120,12 +160,13 @@ class MIDAS_R:
         )
         return cms
 
-    def _update(self, item, count, cur, tot):
+    def _update_cms(self, item, count, cur, tot):
         tot.add(item, count)
         cur.add(item, count)
 
     @lru_cache(maxsize=40960)
-    def _score(self, cur, tot, t):
+    def _score(self, cur, tot):
+        t = self.now_
         if tot == 0 or t <= 1:
             score = 0
         else:
@@ -144,10 +185,10 @@ class MIDAS_R:
         return chi2.sf(score, df=1)
 
     def _update_edge(self, edge, count):
-        self._update(edge, count, self._edge_cur, self._edge_tot)
+        self._update_cms(edge, count, self._edge_cur, self._edge_tot)
 
     def _update_src(self, node, count):
-        self._update(node, count, self._src_cur, self._src_tot)
+        self._update_cms(node, count, self._src_cur, self._src_tot)
 
     def _update_dst(self, node, count):
-        self._update(node, count, self._dst_cur, self._dst_tot)
+        self._update_cms(node, count, self._dst_cur, self._dst_tot)
